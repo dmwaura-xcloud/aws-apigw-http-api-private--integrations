@@ -231,6 +231,24 @@ Resources:
             Timeout: 5
             Retries: 3
             StartPeriod: 10
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs/${EnvironmentName}
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  ECSTaskExecutionRole:
+    Properties:
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
 
   ELBTargetGroupPrivate:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
