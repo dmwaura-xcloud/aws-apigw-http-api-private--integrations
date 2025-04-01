@@ -354,6 +354,13 @@ Resources:
       RouteKey: 'ANY /'
       Target: !Join [ /, [ integrations, !Ref APIIntegration ] ]
 
+  CatchAllRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApiALB
+      RouteKey: 'ANY /{proxy+}'
+      Target: !Join [ /, [ integrations, !Ref APIIntegration ] ]
+
   APIStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
