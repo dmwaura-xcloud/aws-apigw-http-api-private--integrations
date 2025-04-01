@@ -4,7 +4,7 @@ Description: Deploys an ECS cluster with Fargate tasks in private subnets, front
 Parameters:
   EnvironmentName:
     Type: String
-    Default: http-api-private-ecs
+    Default: secure-http-api-ecs
   ECRImage:
     Type: String
     Description: Your Amazon ECR Image URI 
@@ -147,6 +147,31 @@ Resources:
       VpcId: !Ref VPC
       InternetGatewayId: !Ref InternetGateway
 
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+  
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetOneRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetTwoRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetTwo
+      RouteTableId: !Ref PublicRouteTable
+
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
@@ -195,10 +220,17 @@ Resources:
         - Name: metadata-task-definition
           Image: !Ref ECRImage
           PortMappings:
-            - ContainerPort: 80
             - ContainerPort: 8080
           Cpu: 512
           Memory: 1024
+          HealthCheck:
+            Command:
+              - "CMD-SHELL"
+              - "curl -f http://localhost:8080/ping || exit 1"
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 10
 
   ELBTargetGroupPrivate:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
