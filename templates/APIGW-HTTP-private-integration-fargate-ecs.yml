@@ -207,8 +207,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${EnvironmentName}
+      RetentionInDays: 7
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
+    DependsOn: ECSLogGroup
     Properties:
       RequiresCompatibilities: [FARGATE]
       Cpu: "512"
@@ -231,6 +238,12 @@ Resources:
             Timeout: 5
             Retries: 3
             StartPeriod: 10
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Sub /ecs/${EnvironmentName}
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
 
   ELBTargetGroupPrivate:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
