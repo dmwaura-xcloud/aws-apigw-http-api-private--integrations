@@ -21,14 +21,10 @@ Mappings:
       CIDR: '10.0.0.0/24'
     PublicTwo:
       CIDR: '10.0.1.0/24'
-    PublicThree:
-      CIDR: '10.0.2.0/24'
     PrivateOne:
       CIDR: '10.0.100.0/24'
     PrivateTwo:
       CIDR: '10.0.101.0/24'
-    PrivateThree:
-      CIDR: '10.0.102.0/24'
 
 Resources:
 
@@ -64,17 +60,6 @@ Resources:
         - Key: Name
           Value: !Sub "${EnvironmentName}-public-subnet-2"
 
-  PublicSubnetThree:
-    Type: AWS::EC2::Subnet
-    Properties:
-      AvailabilityZone: !Select [ 2, !GetAZs "" ]
-      VpcId: !Ref VPC
-      CidrBlock: !FindInMap [SubnetConfig, PublicThree, CIDR]
-      MapPublicIpOnLaunch: true
-      Tags:
-        - Key: Name
-          Value: !Sub "${EnvironmentName}-public-subnet-3"
-
   PrivateSubnetOne:
     Type: AWS::EC2::Subnet
     Properties:
@@ -95,15 +80,63 @@ Resources:
         - Key: Name
           Value: !Sub "${EnvironmentName}-private-subnet-2"
 
-  PrivateSubnetThree:
-    Type: AWS::EC2::Subnet
+  NatEIPOne:
+    Type: AWS::EC2::EIP
     Properties:
-      AvailabilityZone: !Select [ 2, !GetAZs "" ]
+      Domain: vpc
+
+  NatGatewayOne:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIPOne.AllocationId
+      SubnetId: !Ref PublicSubnetOne
+
+  NatRouteTableOne:
+    Type: AWS::EC2::RouteTable
+    Properties:
       VpcId: !Ref VPC
-      CidrBlock: !FindInMap [SubnetConfig, PrivateThree, CIDR]
-      Tags:
-        - Key: Name
-          Value: !Sub "${EnvironmentName}-private-subnet-3"
+
+  NatRouteOne:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTableOne
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayOne
+
+  PrivateRouteTableOneAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetOne
+      RouteTableId: !Ref NatRouteTableOne
+
+  NatEIPTwo:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGatewayTwo:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIPTwo.AllocationId
+      SubnetId: !Ref PublicSubnetTwo
+
+  NatRouteTableTwo:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  NatRouteTwo:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref NatRouteTableTwo
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayTwo
+
+  PrivateRouteTableTwoAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetTwo
+      RouteTableId: !Ref NatRouteTableTwo
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
@@ -196,7 +229,6 @@ Resources:
       Subnets:
         - !Ref PrivateSubnetOne
         - !Ref PrivateSubnetTwo
-        - !Ref PrivateSubnetThree
       SecurityGroups: [!Ref PrivateLoadBalancerSG]
 
   PrivateLoadBalancerListener:
@@ -237,7 +269,6 @@ Resources:
           Subnets:
             - !Ref PrivateSubnetOne
             - !Ref PrivateSubnetTwo
-            - !Ref PrivateSubnetThree
 
   APIGWVPClinkSG:
     Type: AWS::EC2::SecurityGroup
@@ -258,7 +289,6 @@ Resources:
       SubnetIds:
         - !Ref PrivateSubnetOne
         - !Ref PrivateSubnetTwo
-        - !Ref PrivateSubnetThree
 
   AddIngressToSecurityGroupFromVPClink:
     Type: AWS::EC2::SecurityGroupIngress
