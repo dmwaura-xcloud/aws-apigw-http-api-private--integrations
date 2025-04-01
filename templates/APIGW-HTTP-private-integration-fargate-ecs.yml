@@ -1,0 +1,305 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Deploys an ECS cluster with Fargate tasks in private subnets, fronted by an internal ALB integrated with API Gateway via VPC Link.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: http-api-private-ecs
+  ECRImage:
+    Type: String
+    Description: Your Amazon ECR Image URI 
+    AllowedPattern: "^.+$"
+  NumberOfTasks:
+    Type: Number
+    Default: '3'
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: '10.0.0.0/16'
+    PublicOne:
+      CIDR: '10.0.0.0/24'
+    PublicTwo:
+      CIDR: '10.0.1.0/24'
+    PublicThree:
+      CIDR: '10.0.2.0/24'
+    PrivateOne:
+      CIDR: '10.0.100.0/24'
+    PrivateTwo:
+      CIDR: '10.0.101.0/24'
+    PrivateThree:
+      CIDR: '10.0.102.0/24'
+
+Resources:
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !FindInMap ['SubnetConfig', 'VPC', 'CIDR']
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-vpc"
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, PublicOne, CIDR]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-1"
+
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, PublicTwo, CIDR]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-2"
+
+  PublicSubnetThree:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 2, !GetAZs "" ]
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, PublicThree, CIDR]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-3"
+
+  PrivateSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, PrivateOne, CIDR]
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-private-subnet-1"
+
+  PrivateSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, PrivateTwo, CIDR]
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-private-subnet-2"
+
+  PrivateSubnetThree:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 2, !GetAZs "" ]
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [SubnetConfig, PrivateThree, CIDR]
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-private-subnet-3"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref EnvironmentName
+
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Access to ECS containers
+      VpcId: !Ref VPC
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: [sts:AssumeRole]
+      Path: /
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: metadata-task-definition
+          Image: !Ref ECRImage
+          PortMappings:
+            - ContainerPort: 80
+            - ContainerPort: 8080
+          Cpu: 512
+          Memory: 1024
+
+  ELBTargetGroupPrivate:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      TargetType: ip
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /ping
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200'
+      Port: 8080
+      Protocol: HTTP
+      UnhealthyThresholdCount: 10
+      VpcId: !Ref VPC
+
+  PrivateLoadBalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB SG
+      VpcId: !Ref VPC
+
+  PrivateLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      Subnets:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+        - !Ref PrivateSubnetThree
+      SecurityGroups: [!Ref PrivateLoadBalancerSG]
+
+  PrivateLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref ELBTargetGroupPrivate
+          Type: forward
+      LoadBalancerArn: !Ref PrivateLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  EcsSecurityGroupIngressFromPrivateALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ContainerSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref PrivateLoadBalancerSG
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - ELBTargetGroupPrivate
+      - PrivateLoadBalancer
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: !Ref NumberOfTasks
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - ContainerName: metadata-task-definition
+          ContainerPort: 80
+          TargetGroupArn: !Ref ELBTargetGroupPrivate
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups: [!Ref ContainerSecurityGroup]
+          Subnets:
+            - !Ref PrivateSubnetOne
+            - !Ref PrivateSubnetTwo
+            - !Ref PrivateSubnetThree
+
+  APIGWVPClinkSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: APIGW VPC Link SG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  PrivateAPIGWvpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: private-apigw-vpclink
+      SecurityGroupIds: [!Ref APIGWVPClinkSG]
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+        - !Ref PrivateSubnetThree
+
+  AddIngressToSecurityGroupFromVPClink:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref PrivateLoadBalancerSG
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref APIGWVPClinkSG
+
+  HttpApiALB:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: alb-HTTP-api
+      ProtocolType: HTTP
+
+  APIIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApiALB
+      Description: Private ALB Integration
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      ConnectionType: VPC_LINK
+      ConnectionId: !Ref PrivateAPIGWvpcLink
+      IntegrationUri: !Ref PrivateLoadBalancerListener
+      PayloadFormatVersion: '1.0'
+
+  APIRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApiALB
+      RouteKey: 'ANY /'
+      Target: !Join [ /, [ integrations, !Ref APIIntegration ] ]
+
+  APIStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: $default
+      AutoDeploy: true
+      ApiId: !Ref HttpApiALB
+
+Outputs:
+  APIURL:
+    Description: Invoke URL
+    Value: !Sub https://${HttpApiALB}.execute-api.${AWS::Region}.amazonaws.com/
