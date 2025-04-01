@@ -292,7 +292,7 @@ Resources:
       TaskDefinition: !Ref TaskDefinition
       LoadBalancers:
         - ContainerName: metadata-task-definition
-          ContainerPort: 80
+          ContainerPort: 8080
           TargetGroupArn: !Ref ELBTargetGroupPrivate
       NetworkConfiguration:
         AwsvpcConfiguration:
