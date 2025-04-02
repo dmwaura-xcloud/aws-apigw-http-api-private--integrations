@@ -183,6 +183,7 @@ Resources:
       GroupDescription: Access to ECS containers
       VpcId: !Ref VPC
 
+
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -237,18 +238,6 @@ Resources:
               awslogs-group: !Sub /ecs/${EnvironmentName}
               awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: ecs
-
-  ECSTaskExecutionRole:
-    Properties:
-      Policies:
-        - PolicyName: AmazonECSTaskExecutionRolePolicy
-          PolicyDocument:
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: '*'
 
   ELBTargetGroupPrivate:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
