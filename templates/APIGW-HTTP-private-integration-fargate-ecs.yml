@@ -365,13 +365,6 @@ Resources:
       IntegrationUri: !Ref PrivateLoadBalancerListener
       PayloadFormatVersion: '1.0'
 
-  APIRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref HttpApiALB
-      RouteKey: 'ANY /'
-      Target: !Join [ /, [ integrations, !Ref APIIntegration ] ]
-
   CatchAllRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
