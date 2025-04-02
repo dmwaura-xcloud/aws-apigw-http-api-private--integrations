@@ -208,8 +208,15 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
+  ECSLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /ecs/${EnvironmentName}
+      RetentionInDays: 7
+
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
+    DependsOn: ECSLogGroup
     Properties:
       RequiresCompatibilities: [FARGATE]
       Cpu: "512"
